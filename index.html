@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>word 2 html conversion tool</title>
+<!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
+<!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+<!--[if lt IE 9]>
+  <script src="https://oss.maxcdn.com/html5shiv/3.7.2/html5shiv.min.js"></script>
+  <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
+<![endif]-->
+
+<!-- Latest compiled and minified CSS -->
+<link rel="stylesheet"
+	href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css"
+	integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7"
+	crossorigin="anonymous">
+
+<!-- highlight.js -->
+<link rel="stylesheet" href="./styles/agate.css">
+<script src="./js/highlight.pack.js"></script>
+
+<!-- clipboard.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/1.5.10/clipboard.min.js"></script>
+	
+<style>
+#pastearea {
+    width: 100%;
+    height: 422px;
+    margin-bottom: 10px;
+    overflow-wrap: normal;
+    overflow-y: scroll;
+}
+
+.convertedareacontainer {
+    width: 100%;
+    height: 420px;
+}
+
+.zero-clipboard {
+    position: relative;
+    display: block;
+}
+
+.btn-clipboard, .btn-clipboard-oneliner {
+    position: absolute;
+    right: 128px;
+    z-index: 10;
+    display: block;
+    padding: 5px 8px;
+    font-size: 12px;
+    color: #767676;
+    cursor: pointer;
+    background-color: #fff;
+    border: 1px solid #e1e1e8;
+    border-radius: 0 4px 4px 4px;
+    border-top-right-radius: 0;
+}
+
+.btn-clipboard-oneliner {
+    right: 25px;
+    border-radius: 0 4px 0 4px;
+}
+</style>
+<script src="https://code.jquery.com/jquery-2.2.4.min.js"></script>
+<script>
+(function() {
+	var clipboard;
+	var clipboardOneliner;
+    var hidden;
+    var allowedElements = {
+            "p": [],
+            "br": [],
+            "b": [],
+            "a": ["href", "target"]
+    };
+
+    // document.ready
+	$(function() {
+	    $("#pastearea").on("input", function(e) {
+	    	if ($("#autosync")[0].checked) {
+	    	    convert();
+	    	}
+	    });
+	    
+	    $("#sync").click(function() {
+	    	if (!this.disabled) {
+		    	convert();
+	    	}
+	    });
+	    
+	    $("#autosync").click(function(e) {
+	    	if (!this.checked) {
+                $("#sync").removeAttr("disabled");
+	    	} else {
+                $("#sync").attr("disabled", true);
+	    	}
+	    });
+	    
+        $("#linktarget").click(function(e) {
+            if ($("#autosync")[0].checked) {
+                convert();
+            }
+        });
+        
+        $("#paragraphToBreak").click(function(e) {
+            if ($("#autosync")[0].checked) {
+                convert();
+            }
+        });
+        
+        $("#newlineReducer").click(function(e) {
+            if ($("#autosync")[0].checked) {
+                convert();
+            }
+        });
+        
+	    hidden = document.createElement("div");
+	    hidden.setAttribute("style", "display: none");
+	    document.body.appendChild(hidden);
+	    
+        clipboard = new Clipboard(".btn-clipboard");
+        clipboard.on('success', function(e) {
+            e.clearSelection();
+        });
+
+        clipboardOneliner = new Clipboard(".btn-clipboard-oneliner", {
+            text: function(trigger) {
+                var clipboardTarget = trigger.getAttribute("data-clipboard-target");
+                var txt = $(clipboardTarget)[0].innerText;
+                
+                // replace all newlines after a tag end with nothing
+                txt = txt.replace(/>[\n\r]+/g, ">");
+                
+                // replace all newlines (in general) with a space
+                txt = txt.replace(/[\n\r]+/g," ");
+                return txt;
+            }
+        });
+        clipboardOneliner.on('success', function(e) {
+            e.clearSelection();
+        });
+	});
+	
+	function convert() {
+		var input = $("#pastearea")[0].innerHTML;
+		var linktarget = $("#linktarget")[0].checked;
+        var paragraphToBreak = $("#paragraphToBreak")[0].checked;
+        var newlineReducer = $("#newlineReducer")[0].checked;
+		var output = filter(input, linktarget, paragraphToBreak, newlineReducer, allowedElements);
+        $("#convertedarea").text(output);
+        
+        hljs.highlightBlock($("#convertedarea")[0]);
+	}
+	
+	function filter(input, linkTargetBlank, paragraphToBreak, newlineReducer, allowedElements) {
+		var output = input;
+		var actualAllowedElements = $.extend({}, allowedElements);
+		
+		if (paragraphToBreak && actualAllowedElements["p"]) {
+			delete actualAllowedElements["p"];
+		}
+		
+		// html operations
+		hidden.innerHTML = input;
+		filterElement(hidden, actualAllowedElements, paragraphToBreak, newlineReducer, linkTargetBlank);
+	    output = hidden.innerHTML;
+	    
+	    // string operations
+	    output = output.trim();
+	    
+	    if (newlineReducer) {
+	    	output = output.replace(/[\r\n]+/g, "\n");
+	    }
+		
+		return output;
+	}
+	
+	function filterElement(parentElement, allowedElements, paragraphToBreak, linkTargetBlank) {
+        // iterate through children
+        var removeElements = [];
+        var n = parentElement.childNodes.length;
+        for (var i=0; i < n; i++) {
+        	var element;
+        	var node = parentElement.childNodes[i];
+        	if (node.nodeType == Node.ELEMENT_NODE) {
+        		element = node;
+        	} else {
+        		continue;
+        	}
+        	
+        	// special handling for links
+        	if (linkTargetBlank && element.nodeName.toLowerCase() == "a") {
+        		element.setAttribute("target", "_blank");
+        	}
+        	
+            var attrs = allowedElements[element.nodeName.toLowerCase()];
+            // an allowed element has at least a non-null array of attributes
+            if (attrs != undefined) {
+            	var removeAttributes = [];
+                var m = element.attributes.length;
+                for (var j=0; j < m; j++) {
+                    if (attrs.indexOf(element.attributes[j].name.toLowerCase()) == -1) {
+                    	removeAttributes.push(element.attributes[j]);
+                    }
+                }
+                
+                // remove attributes
+                m = removeAttributes.length;
+                for (j=0; j < m; j++) {
+                	element.removeAttribute(removeAttributes[j].name);
+                }
+            } else {
+            	removeElements.push(element);
+            }
+                
+            // nested call (always nest - even for elements to remove)
+            filterElement(element, allowedElements, paragraphToBreak, linkTargetBlank);
+        }
+        
+        // remove phase
+        n = removeElements.length;
+        for (i=0; i < n; i++) {
+        	// re-attach children to parent
+        	var ref = removeElements[i];
+       		var m = removeElements[i].childNodes.length;
+       		for (var j=m-1; j >= 0; j--) {
+       			var current = removeElements[i].childNodes[j];
+        		parentElement.insertBefore(current, ref);
+        		ref = current;
+       		}
+        	
+        	// check if element was a paragraph and we should convert those to breaks
+        	if (paragraphToBreak && removeElements[i].nodeName.toLowerCase() == "p") {
+        	    parentElement.insertBefore(document.createElement("br"), removeElements[i]);        		
+        	}
+
+        	// remove actual element
+        	parentElement.removeChild(removeElements[i]);
+        }
+	}
+})();
+</script>
+</head>
+<body>
+	<div class="container">
+		<h1>word 2 html conversion tool</h1>
+	</div>
+
+	<div class="container">
+		<div class="row">
+
+			<!-- main content -->
+			<div class="col-md-9">
+<p>
+Paste any text (preferably rich text style content) into the below text area. Note, that the area can be edited
+but no formatting is available what so ever. This is a converter, not an editor.
+</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-5">
+                <div class="form-group">
+                    <label for="pastearea">Input Text (paste into field or write text)</label>
+	                <div id="pastearea" contenteditable="true" class="form-control"></div>
+	            </div>
+	        </div>
+	        
+            <div class="col-md-5">
+                <div class="form-group">
+                    <label for="convertedarea">Resulting HTML</label>
+                    <div class="zero-clipboard">
+                        <span class="btn-clipboard" data-clipboard-target="#convertedarea">Copy</span>
+                    </div>
+                    <div class="zero-clipboard">
+                        <span class="btn-clipboard-oneliner" data-clipboard-target="#convertedarea">Copy as 1 liner</span>
+                    </div>
+                    <pre class="convertedareacontainer"><code id="convertedarea" class="html"></code></pre>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-9">
+	            <div class="checkbox">    
+	                <label>
+	                   <input id="autosync" type="checkbox" checked="checked"> Convert automatically
+	                </label>
+                </div>
+                
+                <div class="checkbox">
+                    <label>
+                       <input id="linktarget" type="checkbox" checked="checked"> Assure all links have target="blank"
+                    </label>
+                </div>
+                
+                <div class="checkbox">
+                    <label>
+                       <input id="paragraphToBreak" type="checkbox"> change paragraph &lt;p&gt; to &lt;br&gt;
+                    </label>
+                </div>
+                
+                <div class="checkbox">
+                    <label>
+                       <input id="newlineReducer" type="checkbox" checked="checked"> reduce multiple newlines into one
+                    </label>
+                </div>
+                
+                <button id="sync" class="btn btn-default" disabled>Convert</button>
+
+			</div>
+		</div>
+	</div>
+</body>
+</html>
